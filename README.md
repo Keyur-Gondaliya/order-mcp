@@ -2,7 +2,8 @@
 
 A lightweight **Model Context Protocol (MCP)** server that exposes order-management tools to any MCP-compatible client (Claude Code, Claude Desktop, etc.).
 
-Backed by **PostgreSQL** via Docker Compose — data persists across restarts.
+Backed by **PostgreSQL** via Docker Compose — data persists across restarts.  
+Also ships a **FastAPI REST server** and a **React frontend** for browser-based management.
 
 ---
 
@@ -54,19 +55,24 @@ orders
 
 order_items
 ├── id        SERIAL        PRIMARY KEY
-├── order_id  VARCHAR(50)   FK → orders.id
+├── order_id  VARCHAR(50)   FK → orders.id  (CASCADE DELETE)
 ├── sku       VARCHAR(100)
-├── qty       INTEGER
-└── price     NUMERIC(10,2)
+├── qty       INTEGER       CHECK (qty > 0)
+└── price     NUMERIC(10,2) CHECK (price >= 0)
+
+api_tokens
+├── id         SERIAL       PRIMARY KEY
+├── token      VARCHAR(64)  UNIQUE NOT NULL
+└── created_at TIMESTAMPTZ
 ```
 
 ---
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.13+
 - Docker & Docker Compose
-- [`mcp`](https://pypi.org/project/mcp/), `psycopg2-binary`, `python-dotenv`
+- Dependencies (see `requirements.txt`): `mcp`, `psycopg2-binary`, `python-dotenv`, `fastapi`, `uvicorn`, `pydantic[email]`
 
 ---
 
@@ -88,16 +94,23 @@ cp .env.example .env
 
 ---
 
-## Starting the Database
+## Running with Docker (full stack)
 
 ```bash
 docker compose up -d
 ```
 
-This starts a PostgreSQL 16 container on port **5432** with a persistent volume.
-The schema and demo seed data are applied automatically on first start via `init.sql`.
+This starts three services:
 
-To stop and remove containers (data volume is preserved):
+| Service | Port | Description |
+|---------|------|-------------|
+| `db` | 5432 | PostgreSQL 16 — schema and seed data applied on first start |
+| `backend` | 8000 | FastAPI REST server + MCP HTTP endpoint |
+| `frontend` | 80 | React app served via nginx (proxies `/api` → backend) |
+
+Open **http://localhost** to use the web UI.
+
+To stop containers (data volume preserved):
 
 ```bash
 docker compose down
@@ -111,23 +124,79 @@ docker compose down -v
 
 ---
 
-## Running the Server
+## Running without Docker
+
+Start the database first:
 
 ```bash
-python order_server.py
+docker compose up -d db
 ```
 
-On startup the server:
-1. Connects to PostgreSQL using values from `.env` (defaults: `localhost:5432`, db/user/pass all `orders`)
-2. Creates tables if they don't exist
-3. Seeds demo data if the `orders` table is empty
-4. Starts listening on **stdio** for MCP clients
+Then run whichever server you need:
+
+```bash
+# MCP server (stdio transport — for Claude Code / Claude Desktop)
+python order_server.py
+
+# REST API server (HTTP — for the frontend or direct API calls)
+python api_server.py          # listens on http://localhost:8000
+```
+
+---
+
+## REST API
+
+The FastAPI server (`api_server.py`) exposes the same order-management logic over HTTP.
+
+### Orders
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/orders` | List orders (`?customer=`, `?status=`, `?limit=`) |
+| `GET` | `/api/orders/{id}` | Get a single order |
+| `POST` | `/api/orders` | Create an order |
+| `PATCH` | `/api/orders/{id}/status` | Update status |
+| `POST` | `/api/orders/{id}/cancel` | Cancel an order |
+| `POST` | `/api/orders/{id}/refund` | Refund an order |
+
+### API Token
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/auth/token` | Get current token (auto-creates one if none exists) |
+| `POST` | `/api/auth/token/regenerate` | Rotate the token |
+| `DELETE` | `/api/auth/token` | Revoke the token |
+
+Interactive docs are available at **http://localhost:8000/docs**.
+
+---
+
+## Frontend
+
+The React app (`frontend/`) provides:
+
+- **Orders tab** — filterable table with create, status update, cancel, and refund actions
+- **API Access tab** — view/copy your bearer token, regenerate or revoke it, and get ready-to-paste MCP configuration
+
+Built with React 18 + Vite, served via nginx in Docker.
+
+To run locally for development:
+
+```bash
+cd frontend
+npm install
+npm run dev    # http://localhost:5173
+```
+
+The dev server proxies `/api` to `http://localhost:8000` (configured in `vite.config.js`).
 
 ---
 
 ## Connecting to Claude Code
 
-Add the server to your project's `.mcp.json`:
+### Option A — stdio (direct Python process)
+
+Add to your project's `.mcp.json`:
 
 ```json
 {
@@ -142,9 +211,33 @@ Add the server to your project's `.mcp.json`:
 
 Replace `/path/to/order-mcp` with the actual path on your machine.
 
+### Option B — HTTP (when the Docker stack is running)
+
+```json
+{
+  "mcpServers": {
+    "order-system": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-token>"
+      }
+    }
+  }
+}
+```
+
+Get your token from the **API Access** tab in the web UI or via `GET /api/auth/token`.
+
+### Option C — OAuth (easiest)
+
+```bash
+claude mcp add order-system -t http localhost:8000/mcp
+```
+
 ### Connecting to Claude Desktop
 
-Add the same block under `mcpServers` in your Claude Desktop config file:
+Add the stdio block (Option A) under `mcpServers` in your Claude Desktop config:
 
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`

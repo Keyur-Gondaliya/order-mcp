@@ -1,8 +1,27 @@
-# React + Vite
+# Order Management Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite frontend for the Order MCP system.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+npm install
+npm run dev    # http://localhost:5173
+```
+
+Requires the backend API running on `http://localhost:8000` (the dev server proxies `/api` there).
+
+## Build
+
+```bash
+npm run build   # output → dist/
+```
+
+## Docker
+
+Built and served automatically by `docker compose up` in the project root. nginx proxies `/api` requests to the backend container.
+
+## Pages
+
+- **Orders** — filterable table; create, update status, cancel, and refund orders
+- **API Access** — view/copy/regenerate/revoke the bearer token; MCP JSON config and OAuth command snippets
