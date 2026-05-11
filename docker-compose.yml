@@ -17,5 +17,28 @@ services:
       retries: 10
     restart: unless-stopped
 
+  backend:
+    build: .
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-orders}
+      DB_USER: ${DB_USER:-orders}
+      DB_PASSWORD: ${DB_PASSWORD:-orders}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
 volumes:
   postgres_data:
