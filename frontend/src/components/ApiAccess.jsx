@@ -134,14 +134,14 @@ export default function ApiAccess() {
                 {confirming === 'revoke' ? 'Confirm Revoke?' : '✕ Revoke Token'}
               </button>
               {confirming && (
-                <button className="btn-ghost" onClick={() => setConfirming(null)}>Cancel</button>
+                <button className="btn-ghost-sm" onClick={() => setConfirming(null)}>Cancel</button>
               )}
             </div>
           </>
         ) : (
           <div className="token-revoked">
-            <p>Token has been revoked.</p>
-            <button className="btn-primary" onClick={async () => {
+            <span>Token has been revoked.</span>
+            <button className="btn-primary-sm" onClick={async () => {
               setLoading(true)
               try { const d = await api.getToken(); setToken(d.token) }
               catch (e) { setError(e.message) }
