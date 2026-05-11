@@ -1,22 +1,22 @@
 # Order MCP Server
 
-A lightweight **Model Context Protocol (MCP)** server that exposes order-management tools to any MCP-compatible client (Claude Code, Claude Desktop, etc.).
+A **Model Context Protocol (MCP)** server that exposes order-management tools to any MCP-compatible client (Claude Code, Claude Desktop, etc.).
 
-Backed by **PostgreSQL** via Docker Compose — data persists across restarts.  
+Backed by **PostgreSQL** via Docker Compose — data persists across restarts.
 Also ships a **FastAPI REST server** and a **React frontend** for browser-based management.
 
 ---
 
-## Features
+## MCP Tools
 
 | Tool | Description |
 |------|-------------|
-| `search_orders` | List orders, optionally filtered by customer email and/or status |
-| `get_order` | Fetch a single order by ID |
-| `create_order` | Create a new order (starts as `pending`) |
-| `update_order_status` | Move an order through the status lifecycle |
-| `cancel_order` | Cancel a `pending` or `paid` order |
-| `refund_order` | Refund a `shipped`, `delivered`, or `paid` order |
+| `search_orders_tool` | List orders, optionally filtered by customer email and/or status |
+| `get_order_tool` | Fetch a single order by ID |
+| `create_order_tool` | Create a new order (starts as `pending`) |
+| `update_order_status_tool` | Move an order through the status lifecycle |
+| `cancel_order_tool` | Cancel a `pending` or `paid` order |
+| `refund_order_tool` | Refund a `shipped`, `delivered`, or `paid` order |
 
 ---
 
@@ -83,13 +83,15 @@ order-mcp/
 │   │   ├── routes/
 │   │   │   ├── orders.py       # /api/orders endpoints
 │   │   │   └── auth.py         # /api/auth endpoints
+│   │   ├── mcp.py              # MCP tool definitions (shared by stdio + HTTP)
 │   │   ├── schemas.py          # Pydantic request/response models
-│   │   └── main.py             # FastAPI app
-│   ├── mcp_server.py           # MCP stdio entry point
+│   │   └── main.py             # FastAPI app — mounts REST routes + /mcp
+│   ├── mcp_server.py           # stdio entry point (Claude Code / Desktop)
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── init.sql                # SQL schema for Docker first-run
 ├── frontend/                   # React + Vite app
+├── .mcp.json                   # Claude Code MCP config (project-scoped)
 ├── docker-compose.yml
 └── README.md
 ```
@@ -128,55 +130,39 @@ cp .env.example .env
 docker compose up -d
 ```
 
-This starts three services:
-
 | Service | Port | Description |
 |---------|------|-------------|
 | `db` | 5432 | PostgreSQL 16 — schema and seed data applied on first start |
-| `backend` | 8000 | FastAPI REST server + MCP HTTP endpoint |
+| `backend` | 8000 | FastAPI REST API + MCP HTTP endpoint at `/mcp` |
 | `frontend` | 80 | React app served via nginx (proxies `/api` → backend) |
 
-Open **http://localhost** to use the web UI.
-
-To stop containers (data volume preserved):
+Open **http://localhost** for the web UI, **http://localhost:8000/docs** for API docs.
 
 ```bash
-docker compose down
-```
-
-To wipe all data and start fresh:
-
-```bash
-docker compose down -v
+docker compose down      # stop (data preserved)
+docker compose down -v   # stop + wipe all data
 ```
 
 ---
 
 ## Running without Docker
 
-Start the database first:
-
 ```bash
+# Start DB only
 docker compose up -d db
-```
 
-Then run whichever server you need:
-
-```bash
+# In one terminal — MCP stdio server (used by Claude Code / Desktop)
 cd backend
-
-# MCP server (stdio transport — for Claude Code / Claude Desktop)
 python mcp_server.py
 
-# REST API server (HTTP — for the frontend or direct API calls)
-uvicorn app.main:app --reload   # listens on http://localhost:8000
+# In another terminal — REST API + /mcp HTTP endpoint
+cd backend
+uvicorn app.main:app --reload    # http://localhost:8000
 ```
 
 ---
 
 ## REST API
-
-The FastAPI server (`backend/app/main.py`) exposes the same order-management logic over HTTP.
 
 ### Orders
 
@@ -193,11 +179,11 @@ The FastAPI server (`backend/app/main.py`) exposes the same order-management log
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/auth/token` | Get current token (auto-creates one if none exists) |
-| `POST` | `/api/auth/token/regenerate` | Rotate the token |
+| `GET` | `/api/auth/token` | Get current token (auto-creates if none exists) |
+| `POST` | `/api/auth/token/regenerate` | Rotate to a new token |
 | `DELETE` | `/api/auth/token` | Revoke the token |
 
-Interactive docs are available at **http://localhost:8000/docs**.
+Interactive docs: **http://localhost:8000/docs**
 
 ---
 
@@ -207,8 +193,6 @@ The React app (`frontend/`) provides:
 
 - **Orders tab** — filterable table with create, status update, cancel, and refund actions
 - **API Access tab** — view/copy your bearer token, regenerate or revoke it, and get ready-to-paste MCP configuration
-
-Built with React 18 + Vite, served via nginx in Docker.
 
 To run locally for development:
 
@@ -222,9 +206,18 @@ The dev server proxies `/api` to `http://localhost:8000` (configured in `vite.co
 
 ---
 
-## Connecting to Claude Code
+## Connecting to Claude Code (CLI)
 
-### Option A — stdio (direct Python process)
+The project ships a `.mcp.json` at the root — Claude Code auto-loads it when you run `claude` inside the project folder. No extra setup needed.
+
+To verify tools are loaded:
+```bash
+claude mcp list
+```
+
+To add to a **different project** or globally, use one of the options below.
+
+### Option A — stdio (no Docker required)
 
 Add to your project's `.mcp.json`:
 
@@ -240,9 +233,7 @@ Add to your project's `.mcp.json`:
 }
 ```
 
-Replace `/path/to/order-mcp` with the actual path on your machine.
-
-### Option B — HTTP (when the Docker stack is running)
+### Option B — HTTP (requires Docker stack running)
 
 ```json
 {
@@ -258,20 +249,40 @@ Replace `/path/to/order-mcp` with the actual path on your machine.
 }
 ```
 
-Get your token from the **API Access** tab in the web UI or via `GET /api/auth/token`.
+Get your token: `curl http://localhost:8000/api/auth/token`
 
-### Option C — OAuth (easiest)
+### Option C — OAuth via CLI
 
 ```bash
-claude mcp add order-system -t http localhost:8000/mcp
+claude mcp add order-system -t http http://localhost:8000/mcp
 ```
 
-### Connecting to Claude Desktop
+---
 
-Add the stdio block (Option A) under `mcpServers` in your Claude Desktop config:
+## Connecting to Claude Desktop
 
-- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+**macOS config file:** `~/Library/Application Support/Claude/claude_desktop_config.json`  
+**Windows config file:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+> **Important:** Use `env.PYTHONPATH` (not `cwd`) — Claude Desktop does not support `cwd` in `mcpServers`.
+
+```json
+{
+  "mcpServers": {
+    "order-system": {
+      "command": "/path/to/order-mcp/.venv/bin/python",
+      "args": ["/path/to/order-mcp/backend/mcp_server.py"],
+      "env": {
+        "PYTHONPATH": "/path/to/order-mcp/backend"
+      }
+    }
+  }
+}
+```
+
+Replace `/path/to/order-mcp` with the actual path on your machine, then **fully quit (⌘Q) and reopen** Claude Desktop.
+
+> **Note:** Use `/Applications/Claude.app` — not the Claude web PWA installed via Chrome.
 
 ---
 
