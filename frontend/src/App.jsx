@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from './api'
 import OrdersTable from './components/OrdersTable'
 import CreateOrderModal from './components/CreateOrderModal'
+import ApiAccess from './components/ApiAccess'
 import './App.css'
 
 const STATUSES = ['pending', 'paid', 'shipped', 'delivered', 'cancelled', 'refunded']
 
 export default function App() {
+  const [tab, setTab] = useState('orders')
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -26,7 +28,7 @@ export default function App() {
     }
   }, [filters])
 
-  useEffect(() => { fetchOrders() }, [fetchOrders])
+  useEffect(() => { if (tab === 'orders') fetchOrders() }, [fetchOrders, tab])
 
   const handleOrderAction = async (action, orderId, payload) => {
     try {
@@ -48,35 +50,59 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Order Management</h1>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          + New Order
-        </button>
+        <div className="app-header-left">
+          <h1>Order Management</h1>
+          <nav className="app-nav">
+            <button
+              className={`nav-tab${tab === 'orders' ? ' nav-tab-active' : ''}`}
+              onClick={() => setTab('orders')}
+            >
+              Orders
+            </button>
+            <button
+              className={`nav-tab${tab === 'api' ? ' nav-tab-active' : ''}`}
+              onClick={() => setTab('api')}
+            >
+              API Access
+            </button>
+          </nav>
+        </div>
+        {tab === 'orders' && (
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            + New Order
+          </button>
+        )}
       </header>
 
-      <div className="filters">
-        <input
-          type="text"
-          placeholder="Filter by customer email"
-          value={filters.customer}
-          onChange={e => setFilters(f => ({ ...f, customer: e.target.value }))}
-        />
-        <select
-          value={filters.status}
-          onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-        >
-          <option value="">All statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <button className="btn" onClick={fetchOrders}>Refresh</button>
-      </div>
-
-      {error && <div className="error-banner">{error}</div>}
-
-      {loading ? (
-        <div className="loading">Loading orders...</div>
+      {tab === 'api' ? (
+        <ApiAccess />
       ) : (
-        <OrdersTable orders={orders} onAction={handleOrderAction} />
+        <>
+          <div className="filters">
+            <input
+              type="text"
+              placeholder="Filter by customer email"
+              value={filters.customer}
+              onChange={e => setFilters(f => ({ ...f, customer: e.target.value }))}
+            />
+            <select
+              value={filters.status}
+              onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
+            >
+              <option value="">All statuses</option>
+              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <button className="btn" onClick={fetchOrders}>Refresh</button>
+          </div>
+
+          {error && <div className="error-banner">{error}</div>}
+
+          {loading ? (
+            <div className="loading">Loading orders...</div>
+          ) : (
+            <OrdersTable orders={orders} onAction={handleOrderAction} />
+          )}
+        </>
       )}
 
       {showCreate && (

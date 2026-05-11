@@ -13,6 +13,7 @@ Then run the API server:
 
 from __future__ import annotations
 
+import secrets
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
@@ -20,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, field_validator
 
 from order_server import (
+    _cursor,
     _init_db,
     cancel_order,
     create_order,
@@ -30,6 +32,13 @@ from order_server import (
 )
 
 app = FastAPI(title="Order System API", version="1.0.0")
+
+
+@app.on_event("startup")
+def on_startup():
+    _init_db()
+    _ensure_token_table()
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -129,10 +138,61 @@ def refund(order_id: str, body: ReasonRequest = ReasonRequest()):
 
 
 # ---------------------------------------------------------------------------
+# Token management
+# ---------------------------------------------------------------------------
+
+def _ensure_token_table() -> None:
+    with _cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS api_tokens (
+                id         SERIAL        PRIMARY KEY,
+                token      VARCHAR(64)   UNIQUE NOT NULL,
+                created_at TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+            )
+        """)
+
+
+def _get_token() -> str | None:
+    with _cursor() as cur:
+        cur.execute("SELECT token FROM api_tokens ORDER BY id DESC LIMIT 1")
+        row = cur.fetchone()
+        return row["token"] if row else None
+
+
+def _set_token(token: str) -> None:
+    with _cursor() as cur:
+        cur.execute("DELETE FROM api_tokens")
+        cur.execute("INSERT INTO api_tokens (token) VALUES (%s)", (token,))
+
+
+@app.get("/api/auth/token")
+def get_token():
+    token = _get_token()
+    if token is None:
+        token = secrets.token_hex(24)
+        _set_token(token)
+    return {"token": token}
+
+
+@app.post("/api/auth/token/regenerate")
+def regenerate_token():
+    token = secrets.token_hex(24)
+    _set_token(token)
+    return {"token": token}
+
+
+@app.delete("/api/auth/token", status_code=204)
+def revoke_token():
+    with _cursor() as cur:
+        cur.execute("DELETE FROM api_tokens")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     import uvicorn
     _init_db()
+    _ensure_token_table()
     uvicorn.run(app, host="0.0.0.0", port=8000)

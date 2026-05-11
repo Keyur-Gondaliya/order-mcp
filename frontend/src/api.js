@@ -26,4 +26,8 @@ export const api = {
     request(`/orders/${id}/cancel`, { method: 'POST', body: { reason } }),
   refundOrder: (id, reason = '') =>
     request(`/orders/${id}/refund`, { method: 'POST', body: { reason } }),
+
+  getToken: () => request('/auth/token'),
+  regenerateToken: () => request('/auth/token/regenerate', { method: 'POST' }),
+  revokeToken: () => request('/auth/token', { method: 'DELETE' }),
 }

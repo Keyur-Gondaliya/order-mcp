@@ -7,7 +7,24 @@
   justify-content: space-between;
   margin-bottom: 1.5rem;
 }
+.app-header-left { display: flex; align-items: center; gap: 1.5rem; }
 .app-header h1 { margin: 0; font-size: 1.6rem; }
+
+/* Nav tabs */
+.app-nav { display: flex; gap: 0.25rem; }
+.nav-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #6b7280;
+  font-size: 0.875rem;
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: color 0.15s, background 0.15s;
+}
+.nav-tab:hover { color: #e2e8f0; background: rgba(255,255,255,0.06); border-color: transparent; }
+.nav-tab-active { color: #e2e8f0; background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.12) !important; }
 
 /* Filters */
 .filters {

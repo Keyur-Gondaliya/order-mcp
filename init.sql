@@ -35,3 +35,9 @@ INSERT INTO order_items (order_id, sku, qty, price) VALUES
     ('ORD-1003', 'PEN-BLK', 3,  2.00),
     ('ORD-1003', 'PAD-A5',  1,  4.50)
 ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS api_tokens (
+    id         SERIAL        PRIMARY KEY,
+    token      VARCHAR(64)   UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
