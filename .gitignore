@@ -11,9 +11,10 @@ dist/
 build/
 *.egg-info/
 
-# Environment variables
+# Environment variables (keep .env.example committed)
 .env
-.env.*
+.env.local
+.env.*.local
 
 # IDE
 .vscode/

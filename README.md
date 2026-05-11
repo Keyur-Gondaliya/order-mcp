@@ -2,7 +2,7 @@
 
 A lightweight **Model Context Protocol (MCP)** server that exposes order-management tools to any MCP-compatible client (Claude Code, Claude Desktop, etc.).
 
-Backed by an **in-memory mock store** so it runs out of the box — swap in a real database or REST client when you're ready.
+Backed by **PostgreSQL** via Docker Compose — data persists across restarts.
 
 ---
 
@@ -39,10 +39,34 @@ Backed by an **in-memory mock store** so it runs out of the box — swap in a re
 
 ---
 
+## Database Schema
+
+```
+orders
+├── id            VARCHAR(50)   PRIMARY KEY
+├── customer      VARCHAR(255)  NOT NULL
+├── total         NUMERIC(10,2)
+├── status        VARCHAR(20)   DEFAULT 'pending'
+├── cancel_reason TEXT
+├── refund_reason TEXT
+├── created_at    TIMESTAMPTZ
+└── updated_at    TIMESTAMPTZ
+
+order_items
+├── id        SERIAL        PRIMARY KEY
+├── order_id  VARCHAR(50)   FK → orders.id
+├── sku       VARCHAR(100)
+├── qty       INTEGER
+└── price     NUMERIC(10,2)
+```
+
+---
+
 ## Requirements
 
 - Python 3.10+
-- [`mcp`](https://pypi.org/project/mcp/) SDK
+- Docker & Docker Compose
+- [`mcp`](https://pypi.org/project/mcp/), `psycopg2-binary`, `python-dotenv`
 
 ---
 
@@ -53,12 +77,36 @@ Backed by an **in-memory mock store** so it runs out of the box — swap in a re
 git clone git@github.com:Keyur-Gondaliya/order-mcp.git
 cd order-mcp
 
-# 2. Create and activate a virtual environment
+# 2. Create a virtual environment and install dependencies
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
-
-# 3. Install dependencies
 pip install -r requirements.txt
+
+# 3. Configure environment (defaults work with docker-compose)
+cp .env.example .env
+```
+
+---
+
+## Starting the Database
+
+```bash
+docker compose up -d
+```
+
+This starts a PostgreSQL 16 container on port **5432** with a persistent volume.
+The schema and demo seed data are applied automatically on first start via `init.sql`.
+
+To stop and remove containers (data volume is preserved):
+
+```bash
+docker compose down
+```
+
+To wipe all data and start fresh:
+
+```bash
+docker compose down -v
 ```
 
 ---
@@ -69,7 +117,11 @@ pip install -r requirements.txt
 python order_server.py
 ```
 
-The server communicates over **stdio** — the standard transport for local MCP clients. You won't see output in the terminal; connect via a client instead.
+On startup the server:
+1. Connects to PostgreSQL using values from `.env` (defaults: `localhost:5432`, db/user/pass all `orders`)
+2. Creates tables if they don't exist
+3. Seeds demo data if the `orders` table is empty
+4. Starts listening on **stdio** for MCP clients
 
 ---
 
@@ -99,33 +151,29 @@ Add the same block under `mcpServers` in your Claude Desktop config file:
 
 ---
 
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_HOST` | `localhost` | PostgreSQL host |
+| `DB_PORT` | `5432` | PostgreSQL port |
+| `DB_NAME` | `orders` | Database name |
+| `DB_USER` | `orders` | Database user |
+| `DB_PASSWORD` | `orders` | Database password |
+
+Copy `.env.example` to `.env` and adjust for your environment.
+
+---
+
 ## Seeded Demo Data
 
-The server starts with three demo orders so tools work immediately:
+Three demo orders are inserted on first startup:
 
 | ID | Customer | Items | Total | Status |
 |----|----------|-------|-------|--------|
 | ORD-1001 | alice@example.com | 1× BOOK-42 | $19.99 | shipped |
 | ORD-1002 | bob@example.com | 2× MUG-RED | $19.00 | pending |
 | ORD-1003 | alice@example.com | 3× PEN-BLK, 1× PAD-A5 | $10.50 | paid |
-
-> **Note:** The store is in-memory only — data resets every time the server restarts.
-
----
-
-## Extending the Server
-
-To connect a real backend, replace the `OrderStore` methods in `order_server.py`:
-
-```python
-class OrderStore:
-    def get(self, order_id: str) -> dict | None: ...
-    def search(self, customer, status, limit) -> list[dict]: ...
-    def create(self, customer, items) -> dict: ...
-    def update_status(self, order_id, status) -> dict | None: ...
-```
-
-The MCP tool layer above is unchanged — only the data layer needs swapping.
 
 ---
 
