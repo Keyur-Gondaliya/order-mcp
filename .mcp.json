@@ -2,7 +2,8 @@
   "mcpServers": {
     "order-system": {
       "command": "/Users/keyur/Drive/Python/order_mcp/.venv/bin/python",
-      "args": ["/Users/keyur/Drive/Python/order_mcp/order_server.py"]
+      "args": ["/Users/keyur/Drive/Python/order_mcp/backend/mcp_server.py"],
+      "cwd": "/Users/keyur/Drive/Python/order_mcp/backend"
     }
   }
 }

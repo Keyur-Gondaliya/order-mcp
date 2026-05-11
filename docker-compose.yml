@@ -9,7 +9,7 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-orders} -d ${DB_NAME:-orders}"]
       interval: 5s
@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
 
   backend:
-    build: .
+    build: ./backend
     environment:
       DB_HOST: db
       DB_PORT: 5432

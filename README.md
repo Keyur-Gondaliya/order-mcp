@@ -68,11 +68,39 @@ api_tokens
 
 ---
 
+## Project Structure
+
+```
+order-mcp/
+├── backend/
+│   ├── app/
+│   │   ├── db/
+│   │   │   ├── connection.py   # connection pool + cursor()
+│   │   │   └── init.py         # schema bootstrap + seed data
+│   │   ├── services/
+│   │   │   ├── orders.py       # order business logic
+│   │   │   └── tokens.py       # API token management
+│   │   ├── routes/
+│   │   │   ├── orders.py       # /api/orders endpoints
+│   │   │   └── auth.py         # /api/auth endpoints
+│   │   ├── schemas.py          # Pydantic request/response models
+│   │   └── main.py             # FastAPI app
+│   ├── mcp_server.py           # MCP stdio entry point
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── init.sql                # SQL schema for Docker first-run
+├── frontend/                   # React + Vite app
+├── docker-compose.yml
+└── README.md
+```
+
+---
+
 ## Requirements
 
 - Python 3.13+
 - Docker & Docker Compose
-- Dependencies (see `requirements.txt`): `mcp`, `psycopg2-binary`, `python-dotenv`, `fastapi`, `uvicorn`, `pydantic[email]`
+- Dependencies (see `backend/requirements.txt`): `mcp`, `psycopg2-binary`, `python-dotenv`, `fastapi`, `uvicorn`, `pydantic[email]`
 
 ---
 
@@ -86,7 +114,7 @@ cd order-mcp
 # 2. Create a virtual environment and install dependencies
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 
 # 3. Configure environment (defaults work with docker-compose)
 cp .env.example .env
@@ -135,18 +163,20 @@ docker compose up -d db
 Then run whichever server you need:
 
 ```bash
+cd backend
+
 # MCP server (stdio transport — for Claude Code / Claude Desktop)
-python order_server.py
+python mcp_server.py
 
 # REST API server (HTTP — for the frontend or direct API calls)
-python api_server.py          # listens on http://localhost:8000
+uvicorn app.main:app --reload   # listens on http://localhost:8000
 ```
 
 ---
 
 ## REST API
 
-The FastAPI server (`api_server.py`) exposes the same order-management logic over HTTP.
+The FastAPI server (`backend/app/main.py`) exposes the same order-management logic over HTTP.
 
 ### Orders
 
@@ -203,7 +233,8 @@ Add to your project's `.mcp.json`:
   "mcpServers": {
     "order-system": {
       "command": "/path/to/order-mcp/.venv/bin/python",
-      "args": ["/path/to/order-mcp/order_server.py"]
+      "args": ["/path/to/order-mcp/backend/mcp_server.py"],
+      "cwd": "/path/to/order-mcp/backend"
     }
   }
 }
