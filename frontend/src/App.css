@@ -24,6 +24,28 @@
   gap: 1.75rem;
 }
 
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.business-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.65rem;
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .app-logo {
   display: flex;
   align-items: center;

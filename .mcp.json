@@ -1,9 +1,11 @@
 {
   "mcpServers": {
     "order-system": {
-      "command": "/Users/keyur/Drive/Python/order_mcp/.venv/bin/python",
-      "args": ["/Users/keyur/Drive/Python/order_mcp/backend/mcp_server.py"],
-      "cwd": "/Users/keyur/Drive/Python/order_mcp/backend"
+      "type": "http",
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer 2c41f119fa85b0fd3ed6d04e9c4208e5de277f7937df2460"
+      }
     }
   }
 }

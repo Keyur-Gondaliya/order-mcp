@@ -30,13 +30,14 @@ def _load_order(cur: psycopg2.extras.RealDictCursor, order_id: str) -> dict | No
     ]
 
     order: dict = {
-        "id":         row["id"],
-        "customer":   row["customer"],
-        "items":      items,
-        "total":      float(row["total"]),
-        "status":     row["status"],
-        "created_at": row["created_at"].isoformat(),
-        "updated_at": row["updated_at"].isoformat(),
+        "id":          row["id"],
+        "business_id": row["business_id"],
+        "customer":    row["customer"],
+        "items":       items,
+        "total":       float(row["total"]),
+        "status":      row["status"],
+        "created_at":  row["created_at"].isoformat(),
+        "updated_at":  row["updated_at"].isoformat(),
     }
     if row["cancel_reason"]:
         order["cancel_reason"] = row["cancel_reason"]
@@ -46,6 +47,7 @@ def _load_order(cur: psycopg2.extras.RealDictCursor, order_id: str) -> dict | No
 
 
 def search_orders(
+    business_id: int,
     customer: str | None = None,
     status: str | None = None,
     limit: int = 20,
@@ -54,7 +56,9 @@ def search_orders(
         raise ValueError(f"Invalid status '{status}'. Must be one of: {sorted(VALID_STATUSES)}")
 
     with cursor() as cur:
-        conditions, params = [], []
+        conditions = ["business_id = %s"]
+        params: list = [business_id]
+
         if customer:
             conditions.append("LOWER(customer) = LOWER(%s)")
             params.append(customer)
@@ -62,9 +66,7 @@ def search_orders(
             conditions.append("status = %s")
             params.append(status)
 
-        sql = "SELECT id FROM orders"
-        if conditions:
-            sql += " WHERE " + " AND ".join(conditions)
+        sql = "SELECT id FROM orders WHERE " + " AND ".join(conditions)
         sql += " ORDER BY created_at DESC LIMIT %s"
         params.append(limit)
 
@@ -73,15 +75,15 @@ def search_orders(
         return [o for oid in ids if (o := _load_order(cur, oid)) is not None]
 
 
-def get_order(order_id: str) -> dict:
+def get_order(order_id: str, business_id: int) -> dict:
     with cursor() as cur:
         order = _load_order(cur, order_id)
-    if not order:
+    if not order or order["business_id"] != business_id:
         raise ValueError(f"Order '{order_id}' not found.")
     return order
 
 
-def create_order(customer: str, items: list[dict]) -> dict:
+def create_order(business_id: int, customer: str, items: list[dict]) -> dict:
     if not customer or "@" not in customer:
         raise ValueError("'customer' must be a valid email address.")
     if not items:
@@ -100,8 +102,8 @@ def create_order(customer: str, items: list[dict]) -> dict:
 
     with cursor() as cur:
         cur.execute(
-            "INSERT INTO orders (id, customer, total, status) VALUES (%s, %s, %s, 'pending')",
-            (order_id, customer, total),
+            "INSERT INTO orders (id, business_id, customer, total, status) VALUES (%s, %s, %s, %s, 'pending')",
+            (order_id, business_id, customer, total),
         )
         psycopg2.extras.execute_values(
             cur,
@@ -111,23 +113,26 @@ def create_order(customer: str, items: list[dict]) -> dict:
         return _load_order(cur, order_id)
 
 
-def update_order_status(order_id: str, status: str) -> dict:
+def update_order_status(order_id: str, business_id: int, status: str) -> dict:
     if status not in VALID_STATUSES:
         raise ValueError(f"Invalid status '{status}'. Must be one of: {sorted(VALID_STATUSES)}")
 
     with cursor() as cur:
         cur.execute(
-            "UPDATE orders SET status = %s, updated_at = NOW() WHERE id = %s RETURNING id",
-            (status, order_id),
+            "UPDATE orders SET status = %s, updated_at = NOW() WHERE id = %s AND business_id = %s RETURNING id",
+            (status, order_id, business_id),
         )
         if not cur.fetchone():
             raise ValueError(f"Order '{order_id}' not found.")
         return _load_order(cur, order_id)
 
 
-def cancel_order(order_id: str, reason: str = "") -> dict:
+def cancel_order(order_id: str, business_id: int, reason: str = "") -> dict:
     with cursor() as cur:
-        cur.execute("SELECT status FROM orders WHERE id = %s", (order_id,))
+        cur.execute(
+            "SELECT status FROM orders WHERE id = %s AND business_id = %s",
+            (order_id, business_id),
+        )
         row = cur.fetchone()
         if not row:
             raise ValueError(f"Order '{order_id}' not found.")
@@ -143,9 +148,12 @@ def cancel_order(order_id: str, reason: str = "") -> dict:
         return _load_order(cur, order_id)
 
 
-def refund_order(order_id: str, reason: str = "") -> dict:
+def refund_order(order_id: str, business_id: int, reason: str = "") -> dict:
     with cursor() as cur:
-        cur.execute("SELECT status FROM orders WHERE id = %s", (order_id,))
+        cur.execute(
+            "SELECT status FROM orders WHERE id = %s AND business_id = %s",
+            (order_id, business_id),
+        )
         row = cur.fetchone()
         if not row:
             raise ValueError(f"Order '{order_id}' not found.")

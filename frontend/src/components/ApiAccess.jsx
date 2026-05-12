@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { api } from '../api'
 import './ApiAccess.css'
 
@@ -39,19 +39,12 @@ function CopyButton({ text }) {
   )
 }
 
-export default function ApiAccess() {
-  const [token, setToken] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+export default function ApiAccess({ token: initialToken, onTokenChange, onLogout }) {
+  const [token, setToken] = useState(initialToken)
   const [showToken, setShowToken] = useState(false)
   const [confirming, setConfirming] = useState(null)
-
-  useEffect(() => {
-    api.getToken()
-      .then(d => setToken(d.token))
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
   const handleRegenerate = async () => {
     if (confirming !== 'regenerate') { setConfirming('regenerate'); return }
@@ -60,6 +53,7 @@ export default function ApiAccess() {
     try {
       const d = await api.regenerateToken()
       setToken(d.token)
+      onTokenChange(d.token)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -73,16 +67,15 @@ export default function ApiAccess() {
     setLoading(true)
     try {
       await api.revokeToken()
-      setToken(null)
+      onLogout()
     } catch (e) {
       setError(e.message)
-    } finally {
       setLoading(false)
     }
   }
 
   const maskedToken = token ? token.slice(0, 8) + '•'.repeat(token.length - 8) : ''
-  const oauthCmd = `claude mcp add order-system -t http ${MCP_HOST}/mcp`
+  const oauthCmd = `claude mcp add order-system -t http http://${MCP_HOST}/mcp`
 
   return (
     <div className="api-access">
@@ -118,7 +111,7 @@ export default function ApiAccess() {
             </div>
             <p className="token-hint">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              Keep this token secret. It provides access to the API with your permissions.
+              Keep this token secret. It provides full access to your business's orders via the API and MCP.
             </p>
             <div className="token-actions">
               <button
@@ -140,13 +133,8 @@ export default function ApiAccess() {
           </>
         ) : (
           <div className="token-revoked">
-            <span>Token has been revoked.</span>
-            <button className="btn-primary-sm" onClick={async () => {
-              setLoading(true)
-              try { const d = await api.getToken(); setToken(d.token) }
-              catch (e) { setError(e.message) }
-              finally { setLoading(false) }
-            }}>Generate New Token</button>
+            <span>Token has been revoked. Sign in again to get a new token.</span>
+            <button className="btn-primary-sm" onClick={onLogout}>Sign Out</button>
           </div>
         )}
       </section>
