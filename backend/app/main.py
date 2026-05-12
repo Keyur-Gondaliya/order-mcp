@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.context import current_business_id
 from app.db.init import init_db
 from app.mcp import mcp
+from app.ratelimit import check as rate_check
 from app.routes.auth import router as auth_router
 from app.routes.orders import router as orders_router
 from app.services import tokens as token_svc
@@ -53,6 +54,14 @@ class MCPAuthMiddleware:
             await _send_json_error(send, 401, "Invalid or expired token")
             return
 
+        allowed, _ = rate_check(business_id)
+        if not allowed:
+            await _send_json_error(
+                send, 429, "Rate limit exceeded. Try again later.",
+                extra_headers=[(b"retry-after", str(60).encode())],
+            )
+            return
+
         ctx_token = current_business_id.set(business_id)
         try:
             await self.mcp_app(scope, receive, send)
@@ -60,16 +69,17 @@ class MCPAuthMiddleware:
             current_business_id.reset(ctx_token)
 
 
-async def _send_json_error(send, status: int, detail: str) -> None:
+async def _send_json_error(
+    send, status: int, detail: str, extra_headers: list | None = None
+) -> None:
     body = json.dumps({"detail": detail}).encode()
-    await send({
-        "type": "http.response.start",
-        "status": status,
-        "headers": [
-            (b"content-type", b"application/json"),
-            (b"content-length", str(len(body)).encode()),
-        ],
-    })
+    headers = [
+        (b"content-type", b"application/json"),
+        (b"content-length", str(len(body)).encode()),
+    ]
+    if extra_headers:
+        headers.extend(extra_headers)
+    await send({"type": "http.response.start", "status": status, "headers": headers})
     await send({"type": "http.response.body", "body": body})
 
 

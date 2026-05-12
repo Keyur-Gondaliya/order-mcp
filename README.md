@@ -2,7 +2,7 @@
 
 A **multi-tenant order management system** built on the **Model Context Protocol (MCP)**. Each business registers with a name and password, gets its own API token, and can only access its own orders — via REST API, web UI, or any MCP-compatible client (Claude Code, Claude Desktop, etc.).
 
-Backed by **PostgreSQL** via Docker Compose — data persists across restarts.
+Backed by **PostgreSQL** for persistence and **Redis** for per-business rate limiting and read caching — both run via Docker Compose.
 
 ---
 
@@ -152,7 +152,10 @@ order-mcp/
 │   │   │   └── auth.py            # /api/auth/register, /login, /token
 │   │   ├── context.py             # ContextVar for current business (HTTP mode)
 │   │   ├── dependencies.py        # FastAPI get_current_business Depends
-│   │   ├── mcp.py                 # MCP tool definitions (shared by stdio + HTTP)
+│   │   ├── redis_client.py        # shared Redis client singleton
+│   │   ├── ratelimit.py           # sliding-window rate limiter (per business)
+│   │   ├── cache.py               # read cache + write invalidation helpers
+│   │   ├── mcp.py                 # MCP tool definitions (with caching)
 │   │   ├── schemas.py             # Pydantic request/response models
 │   │   └── main.py                # FastAPI app + MCPAuthMiddleware at /mcp
 │   ├── mcp_server.py              # stdio entry point (reads MCP_BUSINESS_TOKEN)
@@ -171,7 +174,7 @@ order-mcp/
 
 - Python 3.13+
 - Docker & Docker Compose
-- Dependencies (`backend/requirements.txt`): `mcp`, `psycopg2-binary`, `python-dotenv`, `fastapi`, `uvicorn`, `pydantic[email]`, `bcrypt`
+- Dependencies (`backend/requirements.txt`): `mcp`, `psycopg2-binary`, `python-dotenv`, `fastapi`, `uvicorn`, `pydantic[email]`, `bcrypt`, `redis[hiredis]`
 
 ---
 
@@ -202,6 +205,7 @@ docker compose up -d
 | Service | Port | Description |
 |---------|------|-------------|
 | `db` | 5432 | PostgreSQL 16 |
+| `redis` | 6379 | Redis 7 (rate limiting + caching) |
 | `backend` | 8000 | FastAPI REST API + MCP HTTP endpoint at `/mcp` |
 | `frontend` | 80 | React app served via nginx (proxies `/api` → backend) |
 
@@ -217,8 +221,8 @@ docker compose down -v   # stop + wipe all data
 ## Running without Docker
 
 ```bash
-# Start DB only
-docker compose up -d db
+# Start DB + Redis (required for rate limiting and caching)
+docker compose up -d db redis
 
 # In one terminal — REST API + /mcp HTTP endpoint
 cd backend
@@ -228,6 +232,8 @@ uvicorn app.main:app --reload    # http://localhost:8000
 cd backend
 MCP_BUSINESS_TOKEN=<your-token> python mcp_server.py
 ```
+
+> **Note:** Redis is optional — if `REDIS_URL` is not set or Redis is unreachable, rate limiting and caching are silently skipped and all requests proceed normally.
 
 ---
 
@@ -408,8 +414,45 @@ Then **fully quit (⌘Q) and reopen** Claude Desktop.
 | `DB_NAME` | `orders` | Database name |
 | `DB_USER` | `orders` | Database user |
 | `DB_PASSWORD` | `orders` | Database password |
+| `REDIS_URL` | _(none)_ | Redis connection URL — rate limiting and caching are disabled if unset |
+| `MCP_RATE_LIMIT` | `60` | Max MCP requests per business per window |
+| `MCP_RATE_WINDOW` | `60` | Rate limit window in seconds |
+| `MCP_CACHE_TTL` | `30` | Read-cache TTL in seconds |
 
 Copy `.env.example` to `.env` and adjust for your environment.
+
+---
+
+## Rate Limiting & Caching
+
+Both features run at the MCP layer and are backed by Redis. They are **non-blocking** — if Redis is unreachable, all requests proceed normally without rate limiting or caching.
+
+### Rate Limiting
+
+Each business is limited to **60 MCP requests per 60-second window** (configurable). The limit is enforced in `MCPAuthMiddleware` immediately after token validation, before any tool runs.
+
+- **Algorithm:** Sliding window using Redis sorted sets. Each request adds a timestamp member; members older than the window are pruned before counting.
+- **Response when exceeded:** `HTTP 429` with a `Retry-After: 60` header.
+- **Scope:** Per `business_id` — one business hitting the limit does not affect others.
+
+Tune via environment variables:
+
+```bash
+MCP_RATE_LIMIT=60   # requests allowed per window
+MCP_RATE_WINDOW=60  # window size in seconds
+```
+
+### Read Caching
+
+Results from `search_orders_tool` and `get_order_tool` are cached in Redis with a 30-second TTL (configurable via `MCP_CACHE_TTL`).
+
+- **Cache key:** `mcp:cache:{business_id}:{tool}:{md5(params)}`
+- **Invalidation:** Any write operation (`create_order_tool`, `update_order_status_tool`, `cancel_order_tool`, `refund_order_tool`) immediately flushes all cached entries for that business.
+- **Scope:** Per business — a write by one business never evicts another business's cache.
+
+```bash
+MCP_CACHE_TTL=30    # cache TTL in seconds
+```
 
 ---
 

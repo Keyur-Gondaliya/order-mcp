@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+from app import cache
 from app.context import current_business_id
 from app.services.orders import (
     cancel_order,
@@ -49,7 +50,14 @@ def search_orders_tool(
         status: One of pending, paid, shipped, delivered, cancelled, refunded.
         limit: Max results to return (default 20).
     """
-    return search_orders(business_id=_get_business_id(), customer=customer, status=status, limit=limit)
+    biz_id = _get_business_id()
+    params = {"customer": customer, "status": status, "limit": limit}
+    cached = cache.get(biz_id, "search_orders", params)
+    if cached is not None:
+        return cached
+    result = search_orders(business_id=biz_id, customer=customer, status=status, limit=limit)
+    cache.put(biz_id, "search_orders", params, result)
+    return result
 
 
 @mcp.tool()
@@ -59,7 +67,14 @@ def get_order_tool(order_id: str) -> dict:
     Args:
         order_id: The order's unique identifier.
     """
-    return get_order(order_id=order_id, business_id=_get_business_id())
+    biz_id = _get_business_id()
+    params = {"order_id": order_id}
+    cached = cache.get(biz_id, "get_order", params)
+    if cached is not None:
+        return cached
+    result = get_order(order_id=order_id, business_id=biz_id)
+    cache.put(biz_id, "get_order", params, result)
+    return result
 
 
 @mcp.tool()
@@ -70,7 +85,10 @@ def create_order_tool(customer: str, items: list[dict]) -> dict:
         customer: Customer email.
         items: List of line items — each needs sku (str), qty (int), price (float).
     """
-    return create_order(business_id=_get_business_id(), customer=customer, items=items)
+    biz_id = _get_business_id()
+    result = create_order(business_id=biz_id, customer=customer, items=items)
+    cache.invalidate(biz_id)
+    return result
 
 
 @mcp.tool()
@@ -81,7 +99,10 @@ def update_order_status_tool(order_id: str, status: str) -> dict:
         order_id: The order to update.
         status: One of pending, paid, shipped, delivered, cancelled, refunded.
     """
-    return update_order_status(order_id=order_id, business_id=_get_business_id(), status=status)
+    biz_id = _get_business_id()
+    result = update_order_status(order_id=order_id, business_id=biz_id, status=status)
+    cache.invalidate(biz_id)
+    return result
 
 
 @mcp.tool()
@@ -92,7 +113,10 @@ def cancel_order_tool(order_id: str, reason: str = "") -> dict:
         order_id: The order to cancel.
         reason: Optional reason.
     """
-    return cancel_order(order_id=order_id, business_id=_get_business_id(), reason=reason)
+    biz_id = _get_business_id()
+    result = cancel_order(order_id=order_id, business_id=biz_id, reason=reason)
+    cache.invalidate(biz_id)
+    return result
 
 
 @mcp.tool()
@@ -103,4 +127,7 @@ def refund_order_tool(order_id: str, reason: str = "") -> dict:
         order_id: The order to refund.
         reason: Optional reason.
     """
-    return refund_order(order_id=order_id, business_id=_get_business_id(), reason=reason)
+    biz_id = _get_business_id()
+    result = refund_order(order_id=order_id, business_id=biz_id, reason=reason)
+    cache.invalidate(biz_id)
+    return result

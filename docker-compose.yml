@@ -1,4 +1,10 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
   db:
     image: postgres:16-alpine
     environment:
@@ -25,11 +31,17 @@ services:
       DB_NAME: ${DB_NAME:-orders}
       DB_USER: ${DB_USER:-orders}
       DB_PASSWORD: ${DB_PASSWORD:-orders}
+      REDIS_URL: redis://redis:6379/0
+      MCP_RATE_LIMIT: ${MCP_RATE_LIMIT:-60}
+      MCP_RATE_WINDOW: ${MCP_RATE_WINDOW:-60}
+      MCP_CACHE_TTL: ${MCP_CACHE_TTL:-30}
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
   frontend:
