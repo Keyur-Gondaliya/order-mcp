@@ -6,6 +6,64 @@ Backed by **PostgreSQL** via Docker Compose — data persists across restarts.
 
 ---
 
+## Proof of Work
+
+Here's the system in action — two businesses, fully isolated, one AI interface.
+
+### The Setup
+
+Two businesses are registered: **admin** and **admin1**. Each has its own orders, its own token, and zero visibility into the other's data. Claude Desktop is connected using **admin's token only**.
+
+---
+
+### Step 1 — admin logs in and sees their orders
+
+The `admin` business has one order: `ORD-040A4D44` — a paid order for customer `ghfd@hfg.hg`.
+
+![admin's order list](docs/01-orders-admin.png)
+
+---
+
+### Step 2 — admin copies their API token and MCP config
+
+The **API Access** tab shows the bearer token and a ready-to-paste MCP configuration block. This is what gets added to Claude Desktop or Claude Code to connect AI directly to this business's order system.
+
+![API Access and MCP config](docs/02-api-access.png)
+
+---
+
+### Step 3 — Claude fetches orders via MCP, and proves isolation
+
+Claude Desktop is connected with **admin's token**. When asked to "get all my orders", it calls `search_orders_tool` and returns exactly one result — `ORD-040A4D44`, belonging to admin.
+
+Then it tries to look up `ORD-D5F5823B` — an order that exists in the database, but belongs to **admin1**. The tool returns **not found**. Claude cannot see it. The token boundary is enforced at the database level.
+
+> This is the core proof: even if you know another business's order ID, you cannot access it through a different business's token.
+
+![Claude fetching orders via MCP — isolation enforced](docs/03-claude-mcp-isolation.png)
+
+---
+
+### Step 4 — admin1 has their own separate world
+
+Logged in as `admin1`, you see a completely different orders list: `ORD-D5F5823B` — the exact order Claude couldn't find above. Same system, different token, different data.
+
+![admin1's separate order list](docs/04-orders-admin1.png)
+
+---
+
+### What this demonstrates
+
+| | admin | admin1 |
+|---|---|---|
+| Orders visible | ORD-040A4D44 | ORD-D5F5823B |
+| Claude can access | ✅ ORD-040A4D44 | ❌ blocked |
+| Token | admin's token (set in MCP config) | admin1's token |
+
+Each business gets a private, scoped view of the system — through the web UI, through the REST API, and through AI via MCP. The isolation is not just a UI filter; it is enforced at the query level using `business_id` on every database operation.
+
+---
+
 ## MCP Tools
 
 | Tool | Description |
